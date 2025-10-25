@@ -25,7 +25,7 @@ try:
 except Exception as e:
     print(f"Failed to verify log file writability: {e}", file=sys.stderr)
 
-stream_handler = logging.StreamHandler(stream=TextIOWrapper(sys.stdout.buffer, encoding='utf-8'))
+stream_handler = logging.StreamHandler()
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',

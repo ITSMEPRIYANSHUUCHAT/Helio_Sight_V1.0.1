@@ -6,12 +6,12 @@ import time
 import requests
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from datetime import datetime, timedelta
-from config.settings import COMPANY_KEY
+from config.settings import settings
 from pytz import timezone
 
 class ShinemonitorAPI:
     def __init__(self, company_key=None, base_url="http://api.shinemonitor.com/public/"):
-        self.company_key = company_key if company_key is not None else COMPANY_KEY
+        self.company_key = company_key if company_key is not None else settings.COMPANY_KEY
         self.base_url = base_url
         self.secret = None
         self.token = None

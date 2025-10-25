@@ -1,66 +1,61 @@
-import React, { useState, useEffect } from 'react';
-import { ShieldCheck, ArrowLeft, RotateCcw } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface OTPVerificationProps {
-  onVerify: (otp: string) => Promise<void>;
-  onBack: () => void;
   email: string;
-  onResend: () => Promise<void>;
+  onVerify: (otp: string) => void;
+  onBack: () => void;
+  onResend: () => void;
 }
 
-export const OTPVerification: React.FC<OTPVerificationProps> = ({ 
-  onVerify, 
-  onBack, 
-  email, 
-  onResend 
-}) => {
-  const [otp, setOtp] = useState('');
+export const OTPVerification: React.FC<OTPVerificationProps> = ({ email, onVerify, onBack, onResend }) => {
+  const [otp, setOtp] = useState(['', '', '', '', '', '']); // 6-digit array
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [countdown, setCountdown] = useState(60);
-  const [canResend, setCanResend] = useState(false);
+  const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
-      return () => clearTimeout(timer);
-    } else {
-      setCanResend(true);
-    }
-  }, [countdown]);
+    // Focus first input on mount
+    inputsRef.current[0]?.focus();
+  }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (otp.length !== 6) {
-      setError('Please enter a valid 6-digit OTP');
+  const handleInputChange = (index: number, value: string) => {
+    // Ensure only numeric
+    const numericValue = value.replace(/[^0-9]/g, '');  // Strip non-digits
+    if (numericValue.length > 1) return; // Single digit only
+    const newOtp = [...otp];
+    newOtp[index] = numericValue;
+    setOtp(newOtp);
+    if (numericValue && index < 5) {
+      inputsRef.current[index + 1]?.focus(); // Auto-focus next
+    }
+  };
+
+  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      inputsRef.current[index - 1]?.focus(); // Back to previous
+    }
+    if (e.key === 'Enter') {
+      handleSubmit();
+    }
+  };
+
+  const handleSubmit = async () => {
+    const otpString = otp.join(''); // Extract otp string
+    console.log('OTP String:', otpString);  // Debug log
+    if (otpString.length !== 6) {
+      toast.error('Please enter full 6-digit OTP');
       return;
     }
-
     setIsLoading(true);
-    setError('');
-
     try {
-      await onVerify(otp);
-      toast.success("🎉 Account Verified!", {
-        description: "Your account has been successfully verified and created!"
-      });
+      onVerify(otpString); // Pass otp string to onVerify
     } catch (error) {
-      const errorMessages = [
-        "🔒 OTP mismatch! The stars aren't aligned yet.",
-        "⚡ Verification failed! Double-check those magical digits.",
-        "🌟 Invalid code! Try again with the power of precision.",
-        "🔑 Wrong key! The solar vault remains locked."
-      ];
-      const randomError = errorMessages[Math.floor(Math.random() * errorMessages.length)];
-      setError(randomError);
-      toast.error("Verification Failed", {
-        description: "Invalid OTP. Please check your email and try again."
-      });
+      console.error('OTP Verify error:', error);
+      toast.error('Verification failed. Try again.');
     } finally {
       setIsLoading(false);
     }
@@ -69,120 +64,53 @@ export const OTPVerification: React.FC<OTPVerificationProps> = ({
   const handleResend = async () => {
     setIsLoading(true);
     try {
-      await onResend();
-      setCountdown(60);
-      setCanResend(false);
-      toast.success("OTP Resent", {
-        description: "A new verification code has been sent to your email."
-      });
+      onResend();
     } catch (error) {
-      toast.error("Failed to resend OTP", {
-        description: "Please try again in a moment."
-      });
+      toast.error('Resend failed. Try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
-      {/* Animated Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-green-600 via-emerald-600 to-teal-600">
-        <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white/5 to-transparent animate-pulse"></div>
-        <div className="absolute top-0 left-0 w-full h-full">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-500/20 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute top-3/4 right-1/4 w-80 h-80 bg-teal-500/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
-          <div className="absolute bottom-1/4 left-1/2 w-72 h-72 bg-green-500/20 rounded-full blur-3xl animate-pulse delay-500"></div>
-        </div>
-      </div>
-      
-      {/* Glassmorphism Card */}
-      <Card className="w-full max-w-md bg-white/10 backdrop-blur-xl border-white/20 shadow-2xl shadow-black/20">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-cyan-50 to-emerald-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="p-3 rounded-xl w-fit mx-auto mb-4 bg-gradient-to-r from-green-500 to-emerald-500">
-            <ShieldCheck className="w-8 h-8 text-white" />
-          </div>
-          <CardTitle className="text-2xl font-bold text-white">
-            Verify Your Account
-          </CardTitle>
-          <p className="text-white/80">
-            We've sent a 6-digit code to <span className="font-medium">{email}</span>
+          <CardTitle className="text-2xl font-bold">Verify Your Email</CardTitle>
+          <p className="text-slate-600">
+            We've sent a 6-digit code to {email}
           </p>
         </CardHeader>
-        
         <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-6 bg-red-500/10 border-red-500/20 text-white">
-              <AlertDescription className="font-medium text-white">
-                {error}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="flex flex-col items-center space-y-4">
-              <InputOTP
-                maxLength={6}
-                value={otp}
-                onChange={(value) => setOtp(value)}
-                disabled={isLoading}
-              >
-                <InputOTPGroup>
-                  <InputOTPSlot index={0} className="bg-white/10 border-white/20 text-white text-lg font-bold" />
-                  <InputOTPSlot index={1} className="bg-white/10 border-white/20 text-white text-lg font-bold" />
-                  <InputOTPSlot index={2} className="bg-white/10 border-white/20 text-white text-lg font-bold" />
-                  <InputOTPSlot index={3} className="bg-white/10 border-white/20 text-white text-lg font-bold" />
-                  <InputOTPSlot index={4} className="bg-white/10 border-white/20 text-white text-lg font-bold" />
-                  <InputOTPSlot index={5} className="bg-white/10 border-white/20 text-white text-lg font-bold" />
-                </InputOTPGroup>
-              </InputOTP>
-              
-              <p className="text-white/60 text-sm text-center">
-                Enter the 6-digit verification code
-              </p>
-            </div>
-
-            <div className="flex flex-col space-y-3">
-              <Button 
-                type="submit" 
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
-                disabled={isLoading || otp.length !== 6}
-              >
-                {isLoading ? 'Verifying...' : 'Verify Account'}
-              </Button>
-
-              <div className="flex items-center justify-between">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={onBack}
+          <div className="space-y-4">
+            <div className="flex justify-center space-x-2">
+              {otp.map((digit, index) => (
+                <Input
+                  key={index}
+                  ref={(el) => (inputsRef.current[index] = el)}
+                  type="text"
+                  inputMode="numeric"  // Numeric keyboard
+                  pattern="[0-9]*"  // Numeric pattern
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleInputChange(index, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(index, e)}
+                  className="w-12 h-12 text-center text-lg font-mono"
                   disabled={isLoading}
-                  className="flex items-center space-x-2 text-white/80 hover:text-white hover:bg-white/10"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Back</span>
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={handleResend}
-                  disabled={isLoading || !canResend}
-                  className="flex items-center space-x-2 text-white/80 hover:text-white hover:bg-white/10"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  <span>
-                    {canResend ? 'Resend OTP' : `Resend in ${countdown}s`}
-                  </span>
-                </Button>
-              </div>
+                />
+              ))}
             </div>
-          </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-white/60 text-sm">
-              Didn't receive the code? Check your spam folder or try resending.
-            </p>
+            <Button onClick={handleSubmit} disabled={isLoading || otp.join('').length !== 6} className="w-full">
+              {isLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Verify Code
+            </Button>
+            <Button variant="outline" onClick={handleResend} disabled={isLoading} className="w-full">
+              {isLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Resend Code
+            </Button>
+            <Button variant="ghost" onClick={onBack} className="w-full">
+              Back to Registration
+            </Button>
           </div>
         </CardContent>
       </Card>

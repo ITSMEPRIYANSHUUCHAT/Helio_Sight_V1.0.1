@@ -1,30 +1,22 @@
-
 import React from 'react';
-import { MultiStepRegistration } from './MultiStepRegistration';
-import { apiClient } from '../../services/api';
+import {MultiStepRegistration} from './MultiStepRegistration';  // Import MultiStep
 import { toast } from 'sonner';
 
 interface RegisterFormProps {
-    onToggleAuth: () => void;
+  onToggleAuth: () => void;
 }
 
 export const RegisterForm: React.FC<RegisterFormProps> = ({ onToggleAuth }) => {
-    const handleRegister = async (userData: { username: string; fullname: string; password: string; confirmPassword: string; isInstaller: boolean }) => {
-        try {
-            console.log('Register payload:', userData);
-            const response = await apiClient.register(userData);
-            toast.success(`Welcome, ${response.user.fullname}! Account created successfully.`);
-        } catch (error) {
-            console.error('Registration error:', error);
-            toast.error('Registration failed. Please try again.');
-            throw error;
-        }
-    };
+  const handleRegisterSuccess = (token: string) => {
+    localStorage.setItem('token', token);
+    toast.success('Registration complete! Welcome to Solar Dashboard ☀️');
+    window.location.href = '/dashboard';  // Redirect to dashboard
+  };
 
-    return (
-        <MultiStepRegistration
-            onRegister={handleRegister}
-            onToggleAuth={onToggleAuth}
-        />
-    );
+  return (
+    <MultiStepRegistration
+      onRegister={handleRegisterSuccess}
+      onToggleAuth={onToggleAuth}
+    />
+  );
 };

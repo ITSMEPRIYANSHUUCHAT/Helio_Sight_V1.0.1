@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { RegisterForm } from '@/components/auth/RegisterForm';
 import { PlantsOverview } from '@/components/plants/PlantsOverview';
@@ -7,22 +6,33 @@ import { DeviceDetail } from '@/components/devices/DeviceDetail';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import UserGuide from '@/components/onboarding/UserGuide';
 import { toast } from 'sonner';
-import { apiClient } from '@/services/api';
+import { apiClient } from '@/utils/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Device } from '@/types/device';
 
 type ViewState = 'login' | 'register' | 'plants' | 'device';
 
 const Dashboard = () => {
-  const { user, isAuthenticated, login, logout, isLoading } = useAuth();
+  const { user, isAuthenticated, login, logout, isLoading, setIsAuthenticated } = useAuth();
   const [currentView, setCurrentView] = useState<ViewState>('login');
   const [isLogin, setIsLogin] = useState(true);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [showUserGuide, setShowUserGuide] = useState(false);
 
-  // Auto-navigate to plants if user is authenticated
-  React.useEffect(() => {
-    if (isAuthenticated && user) {
+  // Initialize currentView based on localStorage token (before useEffect)
+  useEffect(() => {
+    const storedToken = localStorage.getItem('token');
+    if (storedToken && !isLoading) {
+      setCurrentView('plants');
+      setIsAuthenticated(true);  // Force authenticated if token exists
+    } else if (!isLoading) {
+      setCurrentView('login');
+    }
+  }, [isLoading, setIsAuthenticated]);
+
+  // Auto-navigate to plants if user is authenticated (after init)
+  useEffect(() => {
+    if (isAuthenticated && user && !isLoading) {
       setCurrentView('plants');
       // Show user guide on first login
       const hasSeenGuide = localStorage.getItem('hasSeenGuide');
@@ -30,52 +40,17 @@ const Dashboard = () => {
         setShowUserGuide(true);
         localStorage.setItem('hasSeenGuide', 'true');
       }
-    } else if (!isLoading) {
+    } else if (!isLoading && !localStorage.getItem('token')) {  // Only login if no token
       setCurrentView('login');
     }
   }, [isAuthenticated, user, isLoading]);
 
-  const handleLogin = async (username: string, password: string) => {
-    try {
-      // HARDCODED DEMO CREDENTIALS - Remove in production
-      if (username === 'demo' && password === 'demo123') {
-        console.log('Demo login successful');
-        const demoUser = {
-          id: 'demo-user-1',
-          username: 'demo',
-          fullname: 'Demo User'
-        };
-        login(demoUser, 'demo-token');
-        setCurrentView('plants');
-        toast.success('Welcome to the Solar PV Dashboard demo!');
-        return;
-      }
-
-      // HARDCODED ADMIN CREDENTIALS - Remove in production
-      if (username === 'admin' && password === 'admin123') {
-        console.log('Admin login successful');
-        const adminUser = {
-          id: 'admin-user-1',
-          username: 'admin',
-          fullname: 'Admin User'
-        };
-        login(adminUser, 'admin-token');
-        setCurrentView('plants');
-        toast.success('Welcome Admin! Full access granted.');
-        return;
-      }
-
-      console.log('Login attempt with API:', username);
-      const response = await apiClient.login({ username, password, isInstaller: false });
-      
-      login(response.user, response.token);
+  const handleLogin = (token: string) => {
+    setIsAuthenticated(true);  // Explicit set
+    toast.success('Welcome to the Solar PV Dashboard demo!');
+    setTimeout(() => {  // Delay for state sync
       setCurrentView('plants');
-      toast.success(`Welcome back, ${response.user.fullname}!`);
-    } catch (error) {
-      console.error('Login failed - throwing error for funky message:', error);
-      // This error will be caught by LoginForm and show the funky message
-      throw error;
-    }
+    }, 100);
   };
 
   const handleRegister = async (userData: { username: string; fullname: string; password: string; confirmPassword: string; isInstaller: boolean }) => {

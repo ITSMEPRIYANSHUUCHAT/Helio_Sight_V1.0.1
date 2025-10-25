@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { UserPlus, ChevronRight, ChevronLeft, User, Zap, MapPin, AlertTriangle, Settings, Eye, EyeOff } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,10 +9,11 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { OTPVerification } from './OTPVerification';
+import { apiClient } from '../../utils/api';  // New API client
+import { OTPVerification } from './OTPVerification';  // For OTP flow
 
 interface EnhancedMultiStepRegistrationProps {
-  onRegister: (userData: any) => Promise<void>;
+  onRegister: (token: string) => Promise<void>;  // Pass token on verify success
   onToggleAuth: () => void;
 }
 
@@ -121,41 +122,69 @@ export const EnhancedMultiStepRegistration: React.FC<EnhancedMultiStepRegistrati
     e.preventDefault();
     if (!validateStep()) return;
     
-    // Show OTP verification instead of directly registering
-    setShowOTP(true);
+    setIsLoading(true);
+    try {
+      // Prepare payload for backend (map to UserCreate + profile)
+      const payload = {
+        username: formData.username,
+        name: formData.fullname,
+        email: formData.email,
+        password: formData.password,
+        usertype: formData.isInstaller ? 'installer' : 'customer',
+        profile: formData.isInstaller ? {
+          panelBrand: formData.panelBrand,
+          panelCapacity: parseFloat(formData.panelCapacity),
+          panelType: formData.panelType,
+          inverterBrand: formData.inverterBrand,
+          inverterCapacity: parseFloat(formData.inverterCapacity),
+          whatsappNumber: formData.whatsappNumber,
+          address: formData.address,
+        } : {
+          whatsappNumber: formData.whatsappNumber,
+          address: formData.address,
+        },
+      };
+      
+      const response = await apiClient.post('/register', payload);
+      toast.success(`Welcome, ${formData.fullname}! Check your email for verification.`);
+      setTempEmail(formData.email);  // For OTP
+      setShowOTP(true);  // Switch to OTP
+    } catch (error) {
+      const errorMessages = [
+        "☀️ Oops! The sun's not shining on your registration yet—try again!",
+        "⚡ Voltage mismatch! Double-check those details.",
+        "🔋 Registration battery low—recharge your inputs!",
+      ];
+      const randomError = errorMessages[Math.floor(Math.random() * errorMessages.length)];
+      setError(randomError);
+      toast.error("Registration Failed", { description: randomError });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleOTPVerify = async (otp: string) => {
     setIsLoading(true);
     try {
-      // Simulate OTP verification
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const userData = {
-        username: formData.username,
-        fullname: formData.fullname,
-        password: formData.password,
-        confirmPassword: formData.confirmPassword,
-        isInstaller: formData.isInstaller,
-        email: formData.email,
-        whatsappNumber: formData.whatsappNumber,
-        address: formData.address,
-        panelBrand: formData.isInstaller ? formData.panelBrand : undefined,
-        panelCapacity: formData.isInstaller ? formData.panelCapacity : undefined,
-        panelType: formData.isInstaller ? formData.panelType : undefined,
-        inverterBrand: formData.isInstaller ? formData.inverterBrand : undefined,
-        inverterCapacity: formData.isInstaller ? formData.inverterCapacity : undefined,
-      };
-      
-      await onRegister(userData);
+      const response = await apiClient.post('/verify-otp', { email: formData.email, otp });
+      localStorage.setItem('token', response.access_token);
+      onRegister(response.access_token);  // Pass token to parent
+      toast.success('Verified! Redirecting to dashboard...');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleOTPResend = async () => {
-    // Simulate resending OTP
-    await new Promise(resolve => setTimeout(resolve, 500));
+    setIsLoading(true);
+    try {
+      await apiClient.post('/resend-otp', { email: formData.email });
+      toast.success('OTP resent!');
+    } catch (error) {
+      toast.error('Resend failed.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getStepIcon = (step: number) => {
@@ -259,79 +288,60 @@ export const EnhancedMultiStepRegistration: React.FC<EnhancedMultiStepRegistrati
       case 2:
         return (
           <div className="space-y-4">
-            {!formData.isInstaller && (
-              <div className="p-3 bg-white/10 border border-white/20 rounded-lg mb-4">
-                <p className="text-sm text-white/80">
-                  ℹ️ Customer Mode: Solar system information is optional. You can skip these fields if you don't have the details yet.
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-white/90">
-                Panel Information {!formData.isInstaller && <span className="text-sm font-normal text-white/60">(Optional)</span>}
-              </h3>
-
-              <div className="space-y-2">
-                <Label htmlFor="panelBrand" className="text-white/90">Panel Brand</Label>
-                <Select
-                  value={formData.panelBrand}
-                  onValueChange={(value) => handleInputChange('panelBrand', value)}
-                  disabled={isLoading}
-                >
-                  <SelectTrigger className="bg-white/10 border-white/20 text-white">
-                    <SelectValue placeholder="Select panel brand" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sunpower">SunPower</SelectItem>
-                    <SelectItem value="lg">LG</SelectItem>
-                    <SelectItem value="panasonic">Panasonic</SelectItem>
-                    <SelectItem value="jinko">Jinko Solar</SelectItem>
-                    <SelectItem value="trina">Trina Solar</SelectItem>
-                    <SelectItem value="canadian">Canadian Solar</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="panelCapacity" className="text-white/90">Panel Capacity (kW)</Label>
-                <Input
-                  id="panelCapacity"
-                  type="number"
-                  step="0.1"
-                  placeholder="e.g., 5.0"
-                  value={formData.panelCapacity}
-                  onChange={(e) => handleInputChange('panelCapacity', e.target.value)}
-                  required={formData.isInstaller}
-                  disabled={isLoading}
-                  className="bg-white/10 border-white/20 text-white placeholder:text-white/50 focus:border-white/40"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="panelType" className="text-white/90">Panel Type</Label>
-                <Select
-                  value={formData.panelType}
-                  onValueChange={(value) => handleInputChange('panelType', value)}
-                  disabled={isLoading}
-                >
-                  <SelectTrigger className="bg-white/10 border-white/20 text-white">
-                    <SelectValue placeholder="Select panel type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="monocrystalline">Monocrystalline</SelectItem>
-                    <SelectItem value="polycrystalline">Polycrystalline</SelectItem>
-                    <SelectItem value="thin-film">Thin Film</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <h3 className="text-lg font-semibold text-white/90">Panel Information</h3>
+            <div className="space-y-2">
+              <Label htmlFor="panelBrand" className="text-white/90">Panel Brand</Label>
+              <Select
+                value={formData.panelBrand}
+                onValueChange={(value) => handleInputChange('panelBrand', value)}
+                disabled={isLoading}
+              >
+                <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                  <SelectValue placeholder="Select panel brand" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sunpower">SunPower</SelectItem>
+                  <SelectItem value="lg">LG</SelectItem>
+                  <SelectItem value="panasonic">Panasonic</SelectItem>
+                  <SelectItem value="jinko">Jinko Solar</SelectItem>
+                  <SelectItem value="trina">Trina Solar</SelectItem>
+                  <SelectItem value="canadian">Canadian Solar</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-
+            <div className="space-y-2">
+              <Label htmlFor="panelCapacity" className="text-white/90">Panel Capacity (kW)</Label>
+              <Input
+                id="panelCapacity"
+                type="number"
+                step="0.1"
+                placeholder="e.g., 5.0"
+                value={formData.panelCapacity}
+                onChange={(e) => handleInputChange('panelCapacity', e.target.value)}
+                required={formData.isInstaller}
+                disabled={isLoading}
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/50 focus:border-white/40"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="panelType" className="text-white/90">Panel Type</Label>
+              <Select
+                value={formData.panelType}
+                onValueChange={(value) => handleInputChange('panelType', value)}
+                disabled={isLoading}
+              >
+                <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                  <SelectValue placeholder="Select panel type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monocrystalline">Monocrystalline</SelectItem>
+                  <SelectItem value="polycrystalline">Polycrystalline</SelectItem>
+                  <SelectItem value="thin-film">Thin Film</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-4 border-t border-white/20 pt-4">
-              <h3 className="text-lg font-semibold text-white/90">
-                Inverter Information {!formData.isInstaller && <span className="text-sm font-normal text-white/60">(Optional)</span>}
-              </h3>
-
+              <h3 className="text-lg font-semibold text-white/90">Inverter Information</h3>
               <div className="space-y-2">
                 <Label htmlFor="inverterBrand" className="text-white/90">Inverter Brand</Label>
                 <Select
@@ -352,7 +362,6 @@ export const EnhancedMultiStepRegistration: React.FC<EnhancedMultiStepRegistrati
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="inverterCapacity" className="text-white/90">Inverter Capacity (kW)</Label>
                 <Input
@@ -374,14 +383,6 @@ export const EnhancedMultiStepRegistration: React.FC<EnhancedMultiStepRegistrati
       case 3:
         return (
           <div className="space-y-4">
-            {!formData.isInstaller && (
-              <div className="p-3 bg-white/10 border border-white/20 rounded-lg mb-4">
-                <p className="text-sm text-white/80">
-                  ℹ️ Customer Mode: Installation address is optional.
-                </p>
-              </div>
-            )}
-
             <div className="space-y-2">
               <Label htmlFor="email" className="text-white/90">Email</Label>
               <Input
@@ -395,13 +396,12 @@ export const EnhancedMultiStepRegistration: React.FC<EnhancedMultiStepRegistrati
                 className="bg-white/10 border-white/20 text-white placeholder:text-white/50 focus:border-white/40"
               />
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="whatsappNumber" className="text-white/90">WhatsApp Number</Label>
               <Input
                 id="whatsappNumber"
                 type="tel"
-                placeholder="Enter your WhatsApp number (e.g., +1234567890)"
+                placeholder="e.g., +1234567890"
                 value={formData.whatsappNumber}
                 onChange={(e) => handleInputChange('whatsappNumber', e.target.value)}
                 required
@@ -409,11 +409,8 @@ export const EnhancedMultiStepRegistration: React.FC<EnhancedMultiStepRegistrati
                 className="bg-white/10 border-white/20 text-white placeholder:text-white/50 focus:border-white/40"
               />
             </div>
-
             <div className="space-y-2">
-              <Label htmlFor="address" className="text-white/90">
-                Installation Address {!formData.isInstaller && <span className="text-sm font-normal text-white/60">(Optional)</span>}
-              </Label>
+              <Label htmlFor="address" className="text-white/90">Installation Address</Label>
               <Input
                 id="address"
                 type="text"

@@ -1,0 +1,11 @@
+FROM apache/airflow:2.10.0-python3.12
+
+USER airflow
+
+# Install missing deps for backend imports (pydantic-settings + any others from requirements.txt)
+RUN pip install --no-cache-dir pydantic-settings
+
+# Copy backend for imports (already mounted, but ensure)
+COPY backend /opt/airflow/backend
+
+WORKDIR /opt/airflow

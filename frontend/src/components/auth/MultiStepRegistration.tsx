@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import * as Yup from 'yup';
 import { UserPlus, ChevronRight, ChevronLeft, User, Zap, MapPin, AlertTriangle, Settings, Eye, EyeOff, BarChart3 } from 'lucide-react';
@@ -11,9 +10,11 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { OTPVerification } from './OTPVerification';
+import { apiClient } from '../../utils/api';
 
 interface MultiStepRegistrationProps {
-  onRegister: (userData: any) => Promise<void>;
+  onRegister: (token: string) => Promise<void>;  // Fixed: Match token callback
   onToggleAuth: () => void;
 }
 
@@ -34,54 +35,18 @@ interface FormData {
 }
 
 const validationSchema = Yup.object().shape({
-  username: Yup.string()
-    .trim()
-    .required('Username is required')
-    .min(3, 'Username must be at least 3 characters'),
-  fullname: Yup.string()
-    .trim()
-    .required('Full name is required'),
-  password: Yup.string()
-    .trim()
-    .required('Password is required')
-    .min(6, 'Password must be at least 6 characters'),
-  confirmPassword: Yup.string()
-    .trim()
-    .required('Confirm password is required')
-    .oneOf([Yup.ref('password')], 'Passwords must match'),
-  email: Yup.string()
-    .trim()
-    .email('Invalid email format')
-    .required('Email is required'),
-  whatsappNumber: Yup.string()
-    .trim()
-    .matches(/^\+?[1-9]\d{9,14}$/, 'Invalid WhatsApp number (e.g., +1234567890)')
-    .required('WhatsApp number is required'),
-  address: Yup.string()
-    .trim()
-    .when('isInstaller', (isInstaller, schema) => {
-      return isInstaller[0] ? schema.required('Address is required for installers') : schema;
-    }),
-  panelBrand: Yup.string()
-    .when('isInstaller', (isInstaller, schema) => {
-      return isInstaller[0] ? schema.required('Panel brand is required for installers') : schema;
-    }),
-  panelCapacity: Yup.string()
-    .when('isInstaller', (isInstaller, schema) => {
-      return isInstaller[0] ? schema.required('Panel capacity is required for installers').matches(/^\d*\.?\d+$/, 'Must be a valid number (e.g., 5.0)') : schema;
-    }),
-  panelType: Yup.string()
-    .when('isInstaller', (isInstaller, schema) => {
-      return isInstaller[0] ? schema.required('Panel type is required for installers') : schema;
-    }),
-  inverterBrand: Yup.string()
-    .when('isInstaller', (isInstaller, schema) => {
-      return isInstaller[0] ? schema.required('Inverter brand is required for installers') : schema;
-    }),
-  inverterCapacity: Yup.string()
-    .when('isInstaller', (isInstaller, schema) => {
-      return isInstaller[0] ? schema.required('Inverter capacity is required for installers').matches(/^\d*\.?\d+$/, 'Must be a valid number (e.g., 4.0)') : schema;
-    }),
+  username: Yup.string().trim().required('Username is required').min(3, 'Username must be at least 3 characters'),
+  fullname: Yup.string().trim().required('Full name is required'),
+  password: Yup.string().trim().required('Password is required').min(6, 'Password must be at least 6 characters'),
+  confirmPassword: Yup.string().trim().required('Confirm password is required').oneOf([Yup.ref('password')], 'Passwords must match'),
+  email: Yup.string().trim().email('Invalid email format').required('Email is required'),
+  whatsappNumber: Yup.string().trim().matches(/^\+?[1-9]\d{9,14}$/, 'Invalid WhatsApp number (e.g., +1234567890)').required('WhatsApp number is required'),
+  address: Yup.string().trim().when('isInstaller', (isInstaller, schema) => isInstaller[0] ? schema.required('Address is required for installers') : schema),
+  panelBrand: Yup.string().when('isInstaller', (isInstaller, schema) => isInstaller[0] ? schema.required('Panel brand is required for installers') : schema),
+  panelCapacity: Yup.string().when('isInstaller', (isInstaller, schema) => isInstaller[0] ? schema.required('Panel capacity is required for installers').matches(/^\d*\.?\d+$/, 'Must be a valid number (e.g., 5.0)') : schema),
+  panelType: Yup.string().when('isInstaller', (isInstaller, schema) => isInstaller[0] ? schema.required('Panel type is required for installers') : schema),
+  inverterBrand: Yup.string().when('isInstaller', (isInstaller, schema) => isInstaller[0] ? schema.required('Inverter brand is required for installers') : schema),
+  inverterCapacity: Yup.string().when('isInstaller', (isInstaller, schema) => isInstaller[0] ? schema.required('Inverter capacity is required for installers').matches(/^\d*\.?\d+$/, 'Must be a valid number (e.g., 4.0)') : schema),
   isInstaller: Yup.boolean(),
 });
 
@@ -106,137 +71,55 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
     whatsappNumber: '',
     address: '',
   });
+  const [showOTP, setShowOTP] = useState(false);
+  const [tempEmail, setTempEmail] = useState('');
 
   const totalSteps = 3;
   const progress = (currentStep / totalSteps) * 100;
 
-  // Real-time validation for immediate feedback
   const handleInputChange = (field: keyof FormData, value: string | boolean) => {
     const trimmedValue = typeof value === 'string' ? value.trim() : value;
     setFormData((prev) => ({
       ...prev,
       [field]: trimmedValue,
     }));
-    
-    // Clear error when user starts typing
-    if (error) {
-      setError(null);
-    }
+    if (error) setError(null);
   };
 
   const getFieldSpecificError = (field: string, value: any) => {
     const solarFieldErrors: Record<string, string[]> = {
-      fullname: [
-        "🌞 Solar panels need a real name to generate power! What's your actual name?",
-        "⚡ Name's looking a bit dim - brighten it up with your full name!",
-        "🔋 Battery not charged enough for that name! Give us the full voltage!",
-        "☀️ Your name needs more solar energy - try adding your last name too!"
-      ],
-      username: [
-        "🌩️ Username storm brewing! Pick a more electrifying handle!",
-        "⚙️ That username's not conducting enough power - try something more energetic!",
-        "🔌 Username short-circuit detected! Need at least 3 characters to power up!",
-        "📡 Username signal too weak! Boost the strength with more characters!"
-      ],
-      password: [
-        "🔐 Password security lower than solar output on a cloudy day! Needs 6+ characters!",
-        "⚡ Your password has less energy than a dead battery! Charge it up!",
-        "🌨️ Password frozen solid! Needs more heat - add some special characters!",
-        "🔋 Password running on empty! Need at least 6 characters to power the system!"
-      ],
-      confirmPassword: [
-        "🔄 Password inverter malfunction! Your passwords are generating different outputs!",
-        "⚡ Circuit mismatch! Your passwords aren't conducting the same current!",
-        "🔌 Wiring error detected! Make sure both password cables match!",
-        "📡 Signal interference! Your password confirmation isn't syncing!"
-      ],
-      email: [
-        "📧 Email satellite dish is broken! That doesn't look like a valid signal!",
-        "🌐 Internet grid down! Check your email address format!",
-        "📡 Email transmission failed! Add an @ symbol to boost the signal!",
-        "💻 Email processor overheating! Cool it down with a proper email format!"
-      ],
-      whatsappNumber: [
-        "📱 WhatsApp solar panel not aligned! Check your number format (+1234567890)!",
-        "📞 Phone battery dead! That number doesn't have enough digits to call!",
-        "🛰️ Communication satellite can't reach that number! Try the international format!",
-        "📶 Signal strength too low! Add country code for better reception!"
-      ],
-      address: [
-        "🏠 Solar GPS can't locate that address! Give us more detailed coordinates!",
-        "🗺️ Map data corrupted! We need your full address to install panels!",
-        "📍 Location beacon not found! Help us pinpoint your solar installation site!",
-        "🛰️ Google Earth offline! Provide a complete address for satellite view!"
-      ],
-      panelBrand: [
-        "☀️ Solar panel brand scanner malfunctioned! Pick a manufacturer!",
-        "🔧 Panel selection bot confused! Choose your solar panel brand!",
-        "⚡ Brand detector short-circuited! Select a panel manufacturer!",
-        "🏭 Factory database connection lost! Pick a panel brand!"
-      ],
-      panelCapacity: [
-        "⚡ Wattage meter broken! Enter your panel capacity in numbers!",
-        "🔋 Power calculator offline! How many kW can your panels generate?",
-        "📊 Capacity sensor malfunctioned! Input a valid number (e.g., 5.0)!",
-        "⚙️ Performance analyzer crashed! Enter panel capacity as a number!"
-      ],
-      panelType: [
-        "🔬 Panel analysis lab closed! Select your panel technology type!",
-        "⚗️ Solar cell detector needs calibration! Choose your panel type!",
-        "🧪 Technology scanner offline! Pick monocrystalline, polycrystalline, or thin-film!",
-        "🔎 Panel microscope broken! Select the type of solar cells!"
-      ],
-      inverterBrand: [
-        "🔄 Inverter brand database corrupted! Select your AC/DC converter manufacturer!",
-        "⚡ Brand recognition software crashed! Pick your inverter maker!",
-        "🔌 Inverter scanner offline! Choose who made your power converter!",
-        "⚙️ Manufacturer lookup failed! Select your inverter brand!"
-      ],
-      inverterCapacity: [
-        "🔋 Inverter capacity meter exploded! Enter the kW rating as a number!",
-        "⚡ Power converter calculator fried! How many kW can it handle?",
-        "📊 AC output analyzer down! Input inverter capacity (e.g., 4.0)!",
-        "⚙️ Capacity measurement tool broken! Enter a valid number!"
-      ]
+      fullname: ["🌞 Solar panels need a real name to generate power! What's your actual name?", "⚡ Name's looking a bit dim - brighten it up with your full name!", "🔋 Battery not charged enough for that name! Give us the full voltage!", "☀️ Your name needs more solar energy - try adding your last name too!"],
+      username: ["🌩️ Username storm brewing! Pick a more electrifying handle!", "⚙️ That username's not conducting enough power - try something more energetic!", "🔌 Username short-circuit detected! Need at least 3 characters to power up!", "📡 Username signal too weak! Boost the strength with more characters!"],
+      password: ["🔐 Password security lower than solar output on a cloudy day! Needs 6+ characters!", "⚡ Your password has less energy than a dead battery! Charge it up!", "🌨️ Password frozen solid! Needs more heat - add some special characters!", "🔋 Password running on empty! Need at least 6 characters to power the system!"],
+      confirmPassword: ["🔄 Password inverter malfunction! Your passwords are generating different outputs!", "⚡ Circuit mismatch! Your passwords aren't conducting the same current!", "🔌 Wiring error detected! Make sure both password cables match!", "📡 Signal interference! Your password confirmation isn't syncing!"],
+      email: ["📧 Email satellite dish is broken! That doesn't look like a valid signal!", "🌐 Internet grid down! Check your email address format!", "📡 Email transmission failed! Add an @ symbol to boost the signal!", "💻 Email processor overheating! Cool it down with a proper email format!"],
+      whatsappNumber: ["📱 WhatsApp solar panel not aligned! Check your number format (+1234567890)!", "📞 Phone battery dead! That number doesn't have enough digits to call!", "🛰️ Communication satellite can't reach that number! Try the international format!", "📶 Signal strength too low! Add country code for better reception!"],
+      address: ["🏠 Solar GPS can't locate that address! Give us more detailed coordinates!", "🗺️ Map data corrupted! We need your full address to install panels!", "📍 Location beacon not found! Help us pinpoint your solar installation site!", "🛰️ Google Earth offline! Provide a complete address for satellite view!"],
+      panelBrand: ["☀️ Solar panel brand scanner malfunctioned! Pick a manufacturer!", "🔧 Panel selection bot confused! Choose your solar panel brand!", "⚡ Brand detector short-circuited! Select a panel manufacturer!", "🏭 Factory database connection lost! Pick a panel brand!"],
+      panelCapacity: ["⚡ Wattage meter broken! Enter your panel capacity in numbers!", "🔋 Power calculator offline! How many kW can your panels generate?", "📊 Capacity sensor malfunctioned! Input a valid number (e.g., 5.0)!", "⚙️ Performance analyzer crashed! Enter panel capacity as a number!"],
+      panelType: ["🔬 Panel analysis lab closed! Select your panel technology type!", "⚗️ Solar cell detector needs calibration! Choose your panel type!", "🧪 Technology scanner offline! Pick monocrystalline, polycrystalline, or thin-film!", "🔎 Panel microscope broken! Select the type of solar cells!"],
+      inverterBrand: ["🔄 Inverter brand database corrupted! Select your AC/DC converter manufacturer!", "⚡ Brand recognition software crashed! Pick your inverter maker!", "🔌 Inverter scanner offline! Choose who made your power converter!", "⚙️ Manufacturer lookup failed! Select your inverter brand!"],
+      inverterCapacity: ["🔋 Inverter capacity meter exploded! Enter the kW rating as a number!", "⚡ Power converter calculator fried! How many kW can it handle?", "📊 AC output analyzer down! Input inverter capacity (e.g., 4.0)!", "⚙️ Capacity measurement tool broken! Enter a valid number!"],
     };
-
     if (!value || (typeof value === 'string' && value.trim() === '')) {
       const errors = solarFieldErrors[field] || ["Field is required"];
       return errors[Math.floor(Math.random() * errors.length)];
     }
-
-    // Specific validation errors
-    if (field === 'username' && value.length < 3) {
-      return solarFieldErrors.username[2]; // Short circuit message
-    }
-    if (field === 'password' && value.length < 6) {
-      return solarFieldErrors.password[3]; // Battery empty message
-    }
-    if (field === 'confirmPassword' && value !== formData.password) {
-      return solarFieldErrors.confirmPassword[0]; // Inverter malfunction
-    }
-    if (field === 'email' && !value.includes('@')) {
-      return solarFieldErrors.email[2]; // Add @ symbol
-    }
-    if (field === 'whatsappNumber' && !/^\+?[1-9]\d{9,14}$/.test(value)) {
-      return solarFieldErrors.whatsappNumber[1]; // Not enough digits
-    }
-    if ((field === 'panelCapacity' || field === 'inverterCapacity') && !/^\d*\.?\d+$/.test(value)) {
-      return solarFieldErrors[field][3]; // Enter as number
-    }
-
+    if (field === 'username' && value.length < 3) return solarFieldErrors.username[2];
+    if (field === 'password' && value.length < 6) return solarFieldErrors.password[3];
+    if (field === 'confirmPassword' && value !== formData.password) return solarFieldErrors.confirmPassword[0];
+    if (field === 'email' && !value.includes('@')) return solarFieldErrors.email[2];
+    if (field === 'whatsappNumber' && !/^\+?[1-9]\d{9,14}$/.test(value)) return solarFieldErrors.whatsappNumber[1];
+    if ((field === 'panelCapacity' || field === 'inverterCapacity') && !/^\d*\.?\d+$/.test(value)) return solarFieldErrors[field][3];
     return null;
   };
 
   const validateCurrentStep = () => {
     const requiredFields: Record<number, string[]> = {
       1: ['fullname', 'username', 'password', 'confirmPassword'],
-      2: formData.isInstaller 
-        ? ['panelBrand', 'panelCapacity', 'panelType', 'inverterBrand', 'inverterCapacity']
-        : [], // Optional for customers
-      3: ['email', 'whatsappNumber', ...(formData.isInstaller ? ['address'] : [])]
+      2: formData.isInstaller ? ['panelBrand', 'panelCapacity', 'panelType', 'inverterBrand', 'inverterCapacity'] : [],
+      3: ['email', 'whatsappNumber', ...(formData.isInstaller ? ['address'] : [])],
     };
-
     const fieldsToValidate = requiredFields[currentStep] || [];
     
     for (const field of fieldsToValidate) {
@@ -273,50 +156,72 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
     if (!validateCurrentStep()) return;
     
     setIsLoading(true);
-    setError(null);
-    
-    // Simulate registration process without backend
     try {
-      // Mock successful registration
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API call
-      
-      toast.success("🎉 Welcome to the Solar Family!", {
-        description: `Your ${formData.isInstaller ? 'installer' : 'customer'} account has been created successfully. Time to harness the sun!`,
-      });
-      
-      // Reset form and navigate to success
-      console.log('Registration completed successfully with data:', formData);
-      
-      // Call onRegister with mock successful response
-      await onRegister({
+      const payload = {
         username: formData.username,
-        fullname: formData.fullname,
-        password: formData.password,
-        confirmPassword: formData.confirmPassword,
-        isInstaller: formData.isInstaller,
+        name: formData.fullname,
         email: formData.email,
-        whatsappNumber: formData.whatsappNumber,
-        address: formData.address
-      });
+        password: formData.password,
+        usertype: formData.isInstaller ? 'installer' : 'customer',
+        profile: formData.isInstaller ? {
+          panelBrand: formData.panelBrand,
+          panelCapacity: parseFloat(formData.panelCapacity),
+          panelType: formData.panelType,
+          inverterBrand: formData.inverterBrand,
+          inverterCapacity: parseFloat(formData.inverterCapacity),
+          whatsappNumber: formData.whatsappNumber,
+          address: formData.address,
+        } : {
+          whatsappNumber: formData.whatsappNumber,
+          address: formData.address,
+        },
+      };
       
-    } catch (error: any) {
-      const solarErrors = [
-        "🌩️ Solar flare detected! Registration temporarily scattered across the photosphere. Try again!",
-        "⚡ Circuit breaker tripped! Our registration inverter needs a quick reset. Give it another spark!",
-        "🔋 Battery bank depleted! Registration couldn't store enough energy. Charging up for retry...",
-        "☁️ Cloudy skies ahead! Registration got lost in the weather patterns. Clear skies coming soon!",
-        "🛰️ Solar satellite offline! Your registration didn't reach our orbital station. Re-establishing connection...",
-        "🌞 Solar eclipse in progress! Registration temporarily blocked. Wait for the sun to shine again!",
-        "⚙️ MPPT controller malfunction! Registration couldn't find maximum power point. Recalibrating...",
-        "🔌 Inverter hiccup! Your registration got stuck in DC mode. Converting to AC shortly...",
-        "📡 Smart meter error! Registration readings came back as 'NaN'. Refreshing the grid connection...",
-        "🏠 Net metering confusion! Registration tried to feed power back to the grid instead of our servers!"
+      console.log('Register payload:', payload);  // Debug payload
+      const response = await apiClient.register(payload);  // Fixed: Use register method, pass payload
+      toast.success(`Welcome, ${formData.fullname}! Check your email for verification.`);
+      setTempEmail(formData.email);
+      setShowOTP(true);
+    } catch (error) {
+      console.error('Register error:', error);
+      const errorMessages = [
+        "☀️ Oops! The sun's not shining on your registration yet—try again!",
+        "⚡ Voltage mismatch! Double-check those details.",
+        "🔋 Registration battery low—recharge your inputs!",
       ];
-      const randomError = solarErrors[Math.floor(Math.random() * solarErrors.length)];
+      const randomError = errorMessages[Math.floor(Math.random() * errorMessages.length)];
       setError(randomError);
-      toast.error("Registration Failed", {
-        description: "Oops! Something went haywire in our solar system. Please try again!",
-      });
+      toast.error("Registration Failed", { description: randomError });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleOTPVerify = async (otp: string) => {
+  setIsLoading(true);
+  try {
+    const payload = { email: tempEmail, otp };
+    console.log('OTP Verify payload:', payload);  // Add debug log
+    const response = await apiClient.post('/auth/verify-otp', payload);
+    localStorage.setItem('token', response.token);
+    await onRegister(response.token);
+    toast.success('Verified! Redirecting to dashboard...');
+  } catch (error) {
+    console.error('OTP Verify error:', error);  // Add debug log
+    toast.error('Verification failed. Try again.');
+    throw error;
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  const handleOTPResend = async () => {
+    setIsLoading(true);
+    try {
+      await apiClient.post('/auth/resend-otp', { email: tempEmail });  // Fixed: Use post method
+      toast.success('OTP resent!');
+    } catch (error) {
+      toast.error('Resend failed.');
     } finally {
       setIsLoading(false);
     }
@@ -384,8 +289,9 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
                   disabled={isLoading}
+                  tabIndex={-1}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -406,8 +312,9 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
                   disabled={isLoading}
+                  tabIndex={-1}
                 >
                   {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -415,7 +322,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
             </div>
           </div>
         );
-
       case 2:
         return (
           <div className="space-y-4">
@@ -426,12 +332,10 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                 </p>
               </div>
             )}
-
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-slate-700">
                 Panel Information {!formData.isInstaller && <span className="text-sm font-normal text-slate-500">(Optional)</span>}
               </h3>
-
               <div className="space-y-2">
                 <Label htmlFor="panelBrand">Panel Brand</Label>
                 <Select
@@ -452,7 +356,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="panelCapacity">Panel Capacity (kW)</Label>
                 <Input
@@ -466,7 +369,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                   disabled={isLoading}
                 />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="panelType">Panel Type</Label>
                 <Select
@@ -485,12 +387,10 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                 </Select>
               </div>
             </div>
-
             <div className="space-y-4 border-t pt-4">
               <h3 className="text-lg font-semibold text-slate-700">
                 Inverter Information {!formData.isInstaller && <span className="text-sm font-normal text-slate-500">(Optional)</span>}
               </h3>
-
               <div className="space-y-2">
                 <Label htmlFor="inverterBrand">Inverter Brand</Label>
                 <Select
@@ -511,7 +411,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="inverterCapacity">Inverter Capacity (kW)</Label>
                 <Input
@@ -528,7 +427,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
             </div>
           </div>
         );
-
       case 3:
         return (
           <div className="space-y-4">
@@ -539,7 +437,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                 </p>
               </div>
             )}
-
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -552,7 +449,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                 disabled={isLoading}
               />
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="whatsappNumber">WhatsApp Number</Label>
               <Input
@@ -565,7 +461,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                 disabled={isLoading}
               />
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="address">
                 Installation Address {!formData.isInstaller && <span className="text-sm font-normal text-slate-500">(Optional)</span>}
@@ -582,15 +477,24 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
             </div>
           </div>
         );
-
       default:
         return null;
     }
   };
 
+  if (showOTP) {
+    return (
+      <OTPVerification
+        email={tempEmail}
+        onVerify={handleOTPVerify}
+        onBack={() => setShowOTP(false)}
+        onResend={handleOTPResend}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-cyan-50 to-emerald-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-700 flex">
-      {/* Left Side - Features Showcase */}
       <div className="hidden lg:flex lg:w-1/2 xl:w-2/5 bg-gradient-to-br from-blue-600 via-cyan-600 to-emerald-600 relative overflow-hidden">
         <div className="absolute inset-0 bg-black/20"></div>
         <div className="relative z-10 flex flex-col justify-center px-12 py-16 text-white">
@@ -602,7 +506,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
               Monitor, optimize, and maximize your solar energy with our advanced dashboard
             </p>
           </div>
-          
           <div className="space-y-6">
             <div className="flex items-start space-x-4 p-4 bg-white/10 rounded-lg backdrop-blur-sm border border-white/20">
               <div className="bg-yellow-400 p-2 rounded-lg">
@@ -613,7 +516,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                 <p className="text-blue-100">Track your solar generation, efficiency, and savings in real-time with beautiful charts and analytics</p>
               </div>
             </div>
-
             <div className="flex items-start space-x-4 p-4 bg-white/10 rounded-lg backdrop-blur-sm border border-white/20">
               <div className="bg-green-400 p-2 rounded-lg">
                 <MapPin className="w-6 h-6 text-green-900" />
@@ -623,7 +525,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                 <p className="text-blue-100">Compare your performance with neighbours and get insights to optimize your system</p>
               </div>
             </div>
-
             <div className="flex items-start space-x-4 p-4 bg-white/10 rounded-lg backdrop-blur-sm border border-white/20">
               <div className="bg-purple-400 p-2 rounded-lg">
                 <Settings className="w-6 h-6 text-purple-900" />
@@ -633,7 +534,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                 <p className="text-blue-100">Get intelligent alerts for maintenance, weather impacts, and performance issues</p>
               </div>
             </div>
-
             <div className="flex items-start space-x-4 p-4 bg-white/10 rounded-lg backdrop-blur-sm border border-white/20">
               <div className="bg-orange-400 p-2 rounded-lg">
                 <BarChart3 className="w-6 h-6 text-orange-900" />
@@ -644,7 +544,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
               </div>
             </div>
           </div>
-
           <div className="mt-8 p-4 bg-gradient-to-r from-green-400/20 to-emerald-400/20 rounded-lg border border-green-300/30">
             <div className="flex items-center space-x-2 mb-2">
               <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
@@ -655,14 +554,10 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
             </p>
           </div>
         </div>
-        
-        {/* Animated Background Elements */}
         <div className="absolute top-10 right-10 w-20 h-20 bg-yellow-300/20 rounded-full animate-bounce"></div>
         <div className="absolute bottom-20 left-10 w-16 h-16 bg-green-300/20 rounded-full animate-pulse"></div>
         <div className="absolute top-1/2 right-1/4 w-12 h-12 bg-blue-300/20 rounded-full animate-ping"></div>
       </div>
-
-      {/* Right Side - Registration Form */}
       <div className="flex-1 flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-md">
           <Card className="bg-white/90 backdrop-blur-sm border border-slate-200 shadow-2xl">
@@ -678,8 +573,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
               <p className="text-center text-slate-600">
                 Join thousands of solar enthusiasts
               </p>
-              
-              {/* Progress Bar */}
               <div className="mt-6">
                 <div className="flex justify-between text-sm text-slate-600 mb-2">
                   <span>Step {currentStep} of {totalSteps}</span>
@@ -687,19 +580,17 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                 </div>
                 <Progress value={progress} className="h-2" />
               </div>
-              
-              {/* Step Indicator */}
               <div className="flex justify-center space-x-8 mt-4">
                 {[1, 2, 3].map((step) => (
-                  <div 
-                    key={step} 
+                  <div
+                    key={step}
                     className={`flex flex-col items-center space-y-2 ${
                       step <= currentStep ? 'text-blue-600' : 'text-slate-400'
                     }`}
                   >
                     <div className={`p-2 rounded-full border-2 ${
-                      step <= currentStep 
-                        ? 'border-blue-600 bg-blue-50' 
+                      step <= currentStep
+                        ? 'border-blue-600 bg-blue-50'
                         : 'border-slate-300 bg-slate-50'
                     }`}>
                       {getStepIcon(step)}
@@ -709,10 +600,8 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                 ))}
               </div>
             </CardHeader>
-
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Account Type Toggle */}
                 {currentStep === 1 && (
                   <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border border-blue-200">
                     <div>
@@ -731,11 +620,7 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                     />
                   </div>
                 )}
-
-                {/* Dynamic Step Content */}
                 {renderStepContent()}
-
-                {/* Fun Error Message */}
                 {error && (
                   <Alert className="border-red-200 bg-red-50">
                     <AlertTriangle className="h-4 w-4 text-red-600" />
@@ -744,8 +629,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                     </AlertDescription>
                   </Alert>
                 )}
-
-                {/* Navigation Buttons */}
                 <div className="flex justify-between space-x-4 pt-6">
                   {currentStep > 1 && (
                     <Button
@@ -759,9 +642,7 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                       <span>Previous</span>
                     </Button>
                   )}
-                  
                   <div className="flex-1"></div>
-                  
                   {currentStep < totalSteps ? (
                     <Button
                       type="button"
@@ -776,7 +657,7 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                     <Button
                       type="submit"
                       disabled={isLoading}
-                      className="flex items-center space-x-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                      className="flex items-center space-x-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-600"
                     >
                       {isLoading ? (
                         <>
@@ -792,8 +673,6 @@ export const MultiStepRegistration: React.FC<MultiStepRegistrationProps> = ({ on
                     </Button>
                   )}
                 </div>
-
-                {/* Login Link */}
                 <div className="text-center pt-6 border-t border-slate-200">
                   <p className="text-slate-600">
                     Already have an account?{' '}

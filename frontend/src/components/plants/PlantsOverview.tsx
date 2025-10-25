@@ -1,12 +1,12 @@
-
 import React, { useState, useEffect } from 'react';
-import { Factory, MapPin, Zap, Users, Settings, Eye, HelpCircle } from 'lucide-react';
+import { Factory, MapPin, Eye, HelpCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { usePlantsData } from '@/hooks/usePlantsData';
 import UserGuide from '@/components/onboarding/UserGuide';
 import { LiveDataPanel } from '@/components/dashboard/LiveDataPanel';
 import { Device } from '@/types/device';
+import { useAuth } from '@/contexts/AuthContext';
+import { usePlantsData } from '@/hooks/usePlantsData';
 
 export interface Plant {
   id: string;
@@ -50,7 +50,7 @@ const getStatusColor = (status: string) => {
 };
 
 export const PlantsOverview: React.FC<PlantsOverviewProps> = ({ user, onDeviceSelect, onLogout }) => {
-  // Updated user type detection - check for demo username or demo123
+  const { isAuthenticated } = useAuth();
   const userType = (user?.username === 'admin') ? 'admin' : 'demo';
   const { plants, devices, isLoading, error } = usePlantsData(userType);
   const [showGuide, setShowGuide] = useState(false);
@@ -140,8 +140,11 @@ export const PlantsOverview: React.FC<PlantsOverviewProps> = ({ user, onDeviceSe
             {userType === 'demo' && <span className="text-sm text-slate-500 ml-2">(Demo View - Limited Data)</span>}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {plants.map((plant) => (
-              <Card key={plant.id} className="glass-card hover:glass-intense transition-all duration-300">
+            {plants.map((plant, plantIndex) => (
+              <Card
+                key={plant.id || `plant-${plantIndex}`}
+                className="glass-card hover:glass-intense transition-all duration-300"
+              >
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <span className="text-lg">{plant.name}</span>
@@ -157,22 +160,17 @@ export const PlantsOverview: React.FC<PlantsOverviewProps> = ({ user, onDeviceSe
                     <span className="text-sm">{plant.location}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-slate-600">Capacity:</span>
-                      <p className="font-semibold">{plant.totalCapacity} kW</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-600">Current:</span>
-                      <p className="font-semibold">{plant.currentGeneration} kW</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-600">Efficiency:</span>
-                      <p className="font-semibold text-green-600">{plant.efficiency}%</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-600">Devices:</span>
-                      <p className="font-semibold">{plant.deviceCount}</p>
-                    </div>
+                    {[
+                      { label: 'Capacity', value: `${plant.totalCapacity} kW` },
+                      { label: 'Current', value: `${plant.currentGeneration} kW` },
+                      { label: 'Efficiency', value: `${plant.efficiency}%`, className: 'text-green-600' },
+                      { label: 'Devices', value: plant.deviceCount },
+                    ].map((stat, idx) => (
+                      <div key={idx}>
+                        <span className="text-slate-600">{stat.label}:</span>
+                        <p className={`font-semibold ${stat.className || ''}`}>{stat.value}</p>
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
@@ -187,10 +185,13 @@ export const PlantsOverview: React.FC<PlantsOverviewProps> = ({ user, onDeviceSe
             {userType === 'demo' && <span className="text-sm text-slate-500 ml-2">(Showing {devices.length} devices)</span>}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {devices.map((device) => {
+            {devices.map((device, deviceIndex) => {
               const plant = plants.find(p => p.id === device.plantId);
               return (
-                <Card key={device.id} className="glass-card hover:glass-intense transition-all duration-300 hover:scale-105 cursor-pointer">
+                <Card
+                  key={device.id || `device-${deviceIndex}`}
+                  className="glass-card hover:glass-intense transition-all duration-300 hover:scale-105 cursor-pointer"
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-semibold text-slate-800">{device.name}</h3>
@@ -200,20 +201,16 @@ export const PlantsOverview: React.FC<PlantsOverviewProps> = ({ user, onDeviceSe
                       </div>
                     </div>
                     <p className="text-xs text-slate-600 mb-3">{plant?.name}</p>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-slate-600">Type:</span>
-                        <span className="font-medium capitalize">{device.type}</span>
+                    {[
+                      { label: 'Type', value: device.type },
+                      { label: 'Output', value: `${device.currentOutput} kW` },
+                      { label: 'Efficiency', value: `${device.efficiency}%`, className: 'text-green-600' },
+                    ].map((stat, idx) => (
+                      <div key={idx} className="flex justify-between text-sm mb-2">
+                        <span className="text-slate-600">{stat.label}:</span>
+                        <span className={`font-medium ${stat.className || ''}`}>{stat.value}</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-600">Output:</span>
-                        <span className="font-medium">{device.currentOutput} kW</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-600">Efficiency:</span>
-                        <span className="font-medium text-green-600">{device.efficiency}%</span>
-                      </div>
-                    </div>
+                    ))}
                     <Button
                       onClick={() => onDeviceSelect(device)}
                       className="w-full mt-4 bg-gradient-to-r from-blue-500 to-cyan-500 text-white"

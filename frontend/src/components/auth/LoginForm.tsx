@@ -1,5 +1,5 @@
-
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { User, Lock, Eye, EyeOff, Building, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,13 +9,15 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { GoogleSignInButton } from './GoogleSignInButton';
 import { toast } from 'sonner';
+import { apiClient } from '../../utils/api';
 
 interface LoginFormProps {
-  onLogin: (email: string, password: string) => void;
+  onLogin: (token: string) => void;
   onToggleAuth: () => void;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onToggleAuth }) => {
+  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -29,44 +31,41 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onToggleAuth }) =
     setError('');
 
     try {
-      await onLogin(username, password);
+      const response = await apiClient.login({ username, password, isInstaller });
+      localStorage.setItem('token', response.token);   
+      onLogin(response.token);
+      toast.success('Login Successful! Welcome back! ☀️');
+      navigate('/dashboard', { replace: true });;  // Replace to avoid history loop
     } catch (error) {
       console.log('Login error caught, showing funky message');
-      
-      // Creative error messages based on user type
-      const errorMessages = isInstaller 
+
+      const errorMessages = isInstaller
         ? [
-            "🔧 Access denied! Your installer credentials seem to be taking a coffee break.",
-            "⚡ Oops! Even the best installers sometimes mix up their wires... er, passwords!",
-            "🏗️ Construction site closed! Double-check your installer credentials.",
-            "🔋 Power down! Your login seems to be running on empty batteries.",
-            "🛠️ Tool malfunction! Your login wrench needs some adjusting.",
-            "⚙️ Looks like your credentials got tangled in the solar panel cables!"
-          ]
+          "🔧 Access denied! Your installer credentials seem to be taking a coffee break.",
+          "⚡ Oops! Even the best installers sometimes mix up their wires... er, passwords!",
+          "🏗️ Construction site closed! Double-check your installer credentials.",
+          "🔋 Power down! Your login seems to be running on empty batteries.",
+          "🛠️ Tool malfunction! Your login wrench needs some adjusting.",
+          "⚙️ Looks like your credentials got tangled in the solar panel cables!"
+        ]
         : [
-            "☀️ Cloud cover detected! Your login credentials are hiding behind some clouds.",
-            "🌅 The sun hasn't risen on your account yet - check those login details!",
-            "⚡ Energy levels low! Your username or password needs a solar boost.",
-            "🔋 Battery depleted! Time to recharge your login credentials.",
-            "🌞 Solar eclipse in progress! Your login seems to be in the shadows.",
-            "💡 Lightbulb moment needed! Double-check those glowing credentials!"
-          ];
+          "☀️ Cloud cover detected! Your login credentials are hiding behind some clouds.",
+          "🌅 The sun hasn't risen on your account yet - check those login details!",
+          "⚡ Energy levels low! Your username or password needs a solar boost.",
+          "🔋 Battery depleted! Time to recharge your login credentials.",
+          "🌞 Solar eclipse in progress! Your login seems to be in the shadows.",
+          "💡 Lightbulb moment needed! Double-check those glowing credentials!"
+        ];
 
       const randomError = errorMessages[Math.floor(Math.random() * errorMessages.length)];
-      console.log('Setting funky error:', randomError);
       setError(randomError);
-      
-      // Also show a toast with the funky message
-      toast.error("Login Failed", {
-        description: randomError
-      });
+      toast.error("Login Failed", { description: randomError });
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
-    // TODO: Implement Google OAuth flow
     console.log('Google Sign-In clicked - requires implementation');
   };
 
@@ -85,7 +84,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onToggleAuth }) =
           </p>
         </CardHeader>
         <CardContent>
-          {/* User Type Toggle */}
           <div className="flex items-center justify-center space-x-4 mb-6 p-4 bg-slate-50 rounded-lg">
             <span className={`text-sm font-medium ${!isInstaller ? 'text-blue-600' : 'text-slate-500'}`}>
               Customer
@@ -100,7 +98,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onToggleAuth }) =
             </span>
           </div>
 
-          {/* Error Alert - Updated to show funky messages */}
           {error && (
             <Alert variant="destructive" className="mb-4 animate-pulse border-2">
               <AlertTriangle className="h-4 w-4" />
@@ -110,15 +107,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onToggleAuth }) =
             </Alert>
           )}
 
-          {/* HARDCODED DEMO CREDENTIALS - Remove in production */}
-          <div className={`border rounded-lg p-4 mb-6 ${isInstaller ? 'bg-orange-50 border-orange-200' : 'bg-blue-50 border-blue-200'}`}>
-            <h3 className={`font-semibold mb-2 ${isInstaller ? 'text-orange-800' : 'text-blue-800'}`}>Demo Credentials</h3>
-            <div className={`text-sm space-y-1 ${isInstaller ? 'text-orange-700' : 'text-blue-700'}`}>
-              <p><strong>Demo User:</strong> demo / demo123</p>
-              <p><strong>Admin User:</strong> admin / admin123</p>
-              <p className="text-xs mt-2 opacity-75">Try wrong credentials to see fun error messages! 🎉</p>
-            </div>
-          </div>
+           
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -158,15 +147,15 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onToggleAuth }) =
               </div>
             </div>
 
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               className={`w-full ${isInstaller ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600' : 'bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600'}`}
               disabled={isLoading}
             >
               {isLoading ? 'Signing In...' : `Sign In as ${isInstaller ? 'Installer' : 'Customer'}`}
             </Button>
           </form>
-          
+
           <div className="mt-4">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -176,10 +165,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onToggleAuth }) =
                 <span className="bg-white px-2 text-muted-foreground">Or continue with</span>
               </div>
             </div>
-            
+
             <GoogleSignInButton onClick={handleGoogleSignIn} className="mt-4" />
           </div>
-          
+
           <div className="mt-4 text-center">
             <button
               onClick={onToggleAuth}

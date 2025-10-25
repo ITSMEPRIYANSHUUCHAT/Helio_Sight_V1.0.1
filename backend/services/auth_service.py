@@ -2,11 +2,13 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Depends, Header
+from sqlalchemy.orm import Session
 import secrets
 import redis
 from ..models.user import User
-from typing import cast
+from ..config.database import get_db
+import random  # Added for numeric OTP
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ALGORITHM = "HS256"
@@ -33,15 +35,33 @@ def authenticate_user(db_user: User, password: str) -> Optional[str]:
     return create_access_token(data={"sub": db_user.username})
 
 def generate_otp() -> str:
-    return secrets.token_hex(3).upper()
+    return ''.join(str(random.randint(0, 9)) for _ in range(6))  # Numeric 6-digit OTP
 
 def store_otp(email: str, otp: str, expiry=300):
     r.setex(f"otp:{email}", expiry, otp)
 
-
 def verify_otp(email: str, otp: str) -> bool:
-    stored: Optional[bytes] = cast(Optional[bytes], r.get(f"otp:{email}"))  # Cast to resolve Awaitable
+    stored: Optional[bytes] = r.get(f"otp:{email}")# type: ignore
     if stored is not None and stored.decode("utf-8") == otp:
         r.delete(f"otp:{email}")
         return True
     return False
+
+def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    
+    token = authorization.split(" ")[1]
+    try:
+        payload = jwt.decode(token, "secret-key", algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if not username:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    
+    db_user = db.query(User).filter(User.username == username).first()
+    if not db_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    return db_user.id # type: ignore
