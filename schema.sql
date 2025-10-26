@@ -17,8 +17,8 @@ DROP TABLE IF EXISTS users CASCADE;
 DROP TYPE IF EXISTS api_provider_type CASCADE;
 DROP TYPE IF EXISTS severity_type CASCADE;
 DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
-DROP ROLE IF EXISTS customer CASCADE;
-DROP ROLE IF EXISTS installer CASCADE;
+DROP ROLE IF EXISTS customer; 
+DROP ROLE IF EXISTS installer;
 
 -- Create ENUM types
 CREATE TYPE api_provider_type AS ENUM ('shinemonitor', 'solarman', 'soliscloud', 'other');
